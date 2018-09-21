@@ -18,35 +18,31 @@ public class ProxyRotator {
 
 	private static final Logger logger = LogManager.getLogger(ProxyRotator.class);
 
-	private static BlockingQueue<NetworkProxy> proxyQueue = new LinkedBlockingQueue<>();
+	private BlockingQueue<NetworkProxy> proxyQueue = new LinkedBlockingQueue<>();
 
-	private static final String ipPortRegex = "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]):[0-9]+$";
+	private static ProxyRotator proxyRotator;
 
-	private static void putToQueue(NetworkProxy networkProxy) {
-		new Thread(new Runnable() {
-
-			@Override
-			public void run() {
-				try {
-
-					try {
-						Document document = Jsoup.connect("https://www.google.com/")
-								.proxy(networkProxy.getIpAddress(), networkProxy.getPort()).get();
-						if (document == null) {
-							throw new Exception("Null document returned.");
-						}
-						proxyQueue.put(networkProxy);
-					} catch (Exception e) {
-						logger.warn("Proxy {} is not rechable/ not working. : {}", networkProxy, e.getMessage());
-					}
-				} catch (Exception e) {
-					logger.error(e.getMessage());
-				}
+	public void putToQueue(NetworkProxy networkProxy) {
+		try {
+			Document document = Jsoup.connect("https://www.google.com/")
+					.proxy(networkProxy.getIpAddress(), networkProxy.getPort()).get();
+			if (document == null) {
+				throw new Exception("Null document returned.");
 			}
-		}).start();
+			proxyQueue.put(networkProxy);
+		} catch (Exception e) {
+			logger.warn("Proxy {} is not rechable/ not working. : {}", networkProxy, e.getMessage());
+		}
 	}
 
-	public static NetworkProxy removeInsert() throws InterruptedException, IOException {
+	public static synchronized ProxyRotator getInstance() {
+		if (proxyRotator == null) {
+			proxyRotator = new ProxyRotator();
+		}
+		return proxyRotator;
+	}
+
+	public NetworkProxy removeInsert() throws InterruptedException, IOException {
 		NetworkProxy networkProxy = null;
 		networkProxy = proxyQueue.poll();
 		if (networkProxy == null) {
@@ -56,7 +52,7 @@ public class ProxyRotator {
 		return networkProxy;
 	}
 
-	public static NetworkProxy getNextProxy() {
+	public NetworkProxy getNextProxy() {
 		NetworkProxy networkProxy = null;
 		try {
 			networkProxy = removeInsert();
@@ -69,7 +65,7 @@ public class ProxyRotator {
 		return networkProxy;
 	}
 
-	private static void loadQueueFromFile(String filePath) {
+	private void loadQueueFromFile(String filePath) {
 		RandomAccessFile read = null;
 		try {
 
@@ -79,11 +75,11 @@ public class ProxyRotator {
 			while ((line = read.readLine()) != null) {
 				logger.info("Read proxy from file {}", line);
 				String[] ipPortPair = line.split(":");
-				InetAddress addr = InetAddress.getByName(ipPortPair[0]);
+				InetAddress addr = InetAddress.getByName(ipPortPair[1]);
 				if (addr.isReachable(2000)) {
 					try {
-						proxyQueue.add(new NetworkProxy(ipPortPair[0], ipPortPair[1], Integer.parseInt(ipPortPair[1]),
-								ipPortPair[2]));
+						proxyQueue.add(new NetworkProxy(Protocol.valueOf(ipPortPair[0]), ipPortPair[1], Integer.parseInt(ipPortPair[2]),
+								ipPortPair[3]));
 					} catch (IllegalStateException e) {
 						logger.warn("Queue is already full");
 						break;
