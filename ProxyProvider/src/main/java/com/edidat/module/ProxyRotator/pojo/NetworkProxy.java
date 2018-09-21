@@ -1,13 +1,15 @@
 package com.edidat.module.ProxyRotator.pojo;
 
+import com.edidat.module.ProxyRotator.Protocol;
+
 public class NetworkProxy {
 
-	String protocol;
+	Protocol protocol;
 	String ipAddress;
 	int port;
 	String origin;
 	
-	public NetworkProxy(String protocol, String ipAddress, int port, String origin) {
+	public NetworkProxy(Protocol protocol, String ipAddress, int port, String origin) {
 		super();
 		this.protocol = protocol;
 		this.ipAddress = ipAddress;
@@ -15,11 +17,11 @@ public class NetworkProxy {
 		this.origin = origin;
 	}
 
-	public String getProtocol() {
+	public Protocol getProtocol() {
 		return protocol;
 	}
 
-	public void setProtocol(String protocol) {
+	public void setProtocol(Protocol protocol) {
 		this.protocol = protocol;
 	}
 
