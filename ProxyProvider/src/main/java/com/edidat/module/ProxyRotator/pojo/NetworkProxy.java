@@ -41,6 +41,15 @@ public class NetworkProxy {
 		this.port = port;
 	}
 
+	
+	public String getOrigin() {
+		return origin;
+	}
+
+	public void setOrigin(String origin) {
+		this.origin = origin;
+	}
+
 	@Override
 	public String toString() {
 		return "NetworkProxy [protocol=" + protocol + ", ipAddress=" + ipAddress + ", port=" + port + "]";
