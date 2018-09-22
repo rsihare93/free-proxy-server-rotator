@@ -30,7 +30,7 @@ public abstract class ProxyProvider {
 		this.proxyQueue = proxyQueue;
 	}
 
-	public abstract void extractAndLoad(Protocol protocol);
+	public abstract void extractAndLoad(Protocol protocol) throws InterruptedException;
 	
 	public BlockingQueue<NetworkProxy> getProxyQueue() {
 		return proxyQueue;
@@ -53,12 +53,14 @@ public abstract class ProxyProvider {
 		return remainingQuota;
 	}
 
-	public void setRemainingQuota(Integer remainingQuota) {
-		this.remainingQuota = remainingQuota;
+	public void reduceRemainingQuota(int quotaUsage) {
+		int remaining = this.remainingQuota - quotaUsage;
+		this.remainingQuota =  remaining < 0 ? 0 : remaining;
 	}
 
 	public Integer getNOOfProxiesToLoadPerMinute() {
 		int minProxyToLoadAtATime = Math.min(MIN_PROXIES_TO_LOAD, remainingQuota);
+		return minProxyToLoadAtATime;
 	}
 	
 	public String getHttpProxyApiURL() {
