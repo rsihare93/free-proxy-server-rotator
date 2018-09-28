@@ -16,6 +16,14 @@ import org.jsoup.nodes.Document;
 
 import com.edidat.module.ProxyRotator.pojo.NetworkProxy;
 
+/**
+ * @author rohit.ihare 
+ *Proxy rotator is the singleton class, which maintains a
+ *static blocking queue which is filled by multiple proxy extractor
+ *threads. It also provides method to get a proxy from queue. When
+ *server shutdowns, queue get drained to a file for backingup the
+ *proxies for future use.
+ */
 public class ProxyRotator {
 
 	private static final Logger logger = LogManager.getLogger(ProxyRotator.class);
@@ -44,11 +52,21 @@ public class ProxyRotator {
 		return r;
 	}
 
-	// Loads the queue with pre-backedup proxies and sets a shutdown hook.
-	public void init() {
+	/**
+	 * Loads the queue with pre-backup proxies and sets a shutdown hook to drain the
+	 * queue into backup file.
+	 * 
+	 * @throws ProxyRotatorException
+	 */
+	public void init() throws ProxyRotatorException {
 		String dataDirectory = System.getenv(Constants.DATA_DIR);
 		String proxyPersistenceFile = dataDirectory + File.separator + Constants.PROXY_PERSISTENCE_FILE;
 
+		if (dataDirectory == null || proxyPersistenceFile == null) {
+			throw new ProxyRotatorException("Data directory / Proxy file path Environment variables are not set.");
+		}
+
+		// Load pre backup proies into queue
 		loadQueueFromFile(proxyPersistenceFile);
 
 		// Drains queue to a file when engine shutdowns.
@@ -78,6 +96,11 @@ public class ProxyRotator {
 
 	}
 
+	/**
+	 * Put the proxy to queue, if the proxy is reachable.
+	 * 
+	 * @param networkProxy
+	 */
 	public void putToQueue(NetworkProxy networkProxy) {
 		try {
 			Document document = Jsoup.connect("https://www.google.com/")
@@ -91,6 +114,13 @@ public class ProxyRotator {
 		}
 	}
 
+	/**
+	 * this method removes first element from queue and re-insert it into queue.
+	 * 
+	 * @return if queue is empty it return null or an object of NetworkProxy
+	 * @throws InterruptedException
+	 * @throws IOException
+	 */
 	public NetworkProxy removeInsert() throws InterruptedException, IOException {
 		NetworkProxy networkProxy = null;
 		networkProxy = proxyQueue.poll();
@@ -114,7 +144,7 @@ public class ProxyRotator {
 		return networkProxy;
 	}
 
-	private void loadQueueFromFile(String filePath) {
+	private void loadQueueFromFile(String filePath) throws ProxyRotatorException {
 		RandomAccessFile read = null;
 		try {
 
@@ -137,12 +167,14 @@ public class ProxyRotator {
 			}
 		} catch (Exception e) {
 			logger.error(e.getMessage());
+			throw new ProxyRotatorException(e.getMessage(), e);
 		} finally {
 			if (read != null) {
 				try {
 					read.close();
 				} catch (IOException e) {
-
+					logger.error(e.getMessage());
+					throw new ProxyRotatorException(e.getMessage(), e);
 				}
 			}
 		}

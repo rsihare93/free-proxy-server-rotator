@@ -3,7 +3,7 @@ package com.edidat.module.ProxyRotator.pojo;
 import com.edidat.module.ProxyRotator.Protocol;
 import com.edidat.module.ProxyRotator.RequestType;
 
-public class ProxyRequest {
+public class ClientRequestMessage {
 	
 	private RequestType requestType;
 	private Protocol protocol;
@@ -25,9 +25,17 @@ public class ProxyRequest {
 		this.protocol = protocol;
 	}
 
-	public ProxyRequest(Protocol protocol) {
+	public ClientRequestMessage(Protocol protocol) {
 		super();
 		this.protocol = protocol;
 	}
+
+	public ClientRequestMessage(RequestType requestType, Protocol protocol) {
+		super();
+		this.requestType = requestType;
+		this.protocol = protocol;
+	}
+	
+	
 
 }
