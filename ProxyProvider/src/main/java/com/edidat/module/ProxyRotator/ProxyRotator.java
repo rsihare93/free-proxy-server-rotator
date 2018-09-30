@@ -30,7 +30,7 @@ public class ProxyRotator {
 
 	private BlockingQueue<NetworkProxy> proxyQueue = new LinkedBlockingQueue<>(20);
 
-	private static ProxyRotator proxyRotatorSingletonInstance;
+	private volatile static ProxyRotator proxyRotatorSingletonInstance;
 
 	private static final Object lock = new Object();;
 
@@ -38,7 +38,7 @@ public class ProxyRotator {
 
 	}
 
-	public static synchronized ProxyRotator getInstance() {
+	public static ProxyRotator getInstance() {
 		ProxyRotator r = proxyRotatorSingletonInstance;
 		if (r == null) {
 			synchronized (lock) {

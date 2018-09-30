@@ -5,15 +5,15 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
+import java.util.Random;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.edidat.module.ProxyRotator.ProxyRotator;
 import com.edidat.module.ProxyRotator.RequestType;
+import com.edidat.module.ProxyRotator.pojo.ClientRequestMessage;
 import com.edidat.module.ProxyRotator.pojo.NetworkProxy;
 import com.edidat.module.ProxyRotator.pojo.ServerResponseMessage;
-import com.edidat.module.ProxyRotator.pojo.ClientRequestMessage;
 import com.google.gson.Gson;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
@@ -44,7 +44,7 @@ public class ClientConnectionHandler implements Runnable {
 		try {
 			logger.info("Serving Client {}", clientSocket.getInetAddress());
 			clientSocket.setKeepAlive(true);
-			clientSocket.setSoTimeout(15000);
+			clientSocket.setSoTimeout(0);
 			new Thread(new HearBeatSender(clientSocket)).start();
 			InputStream inputStream = clientSocket.getInputStream();
 
@@ -53,11 +53,15 @@ public class ClientConnectionHandler implements Runnable {
 					JsonReader jsonReader = new JsonReader(new InputStreamReader(inputStream));
 					Gson gson = new Gson();
 					ClientRequestMessage request = gson.fromJson(jsonReader, ClientRequestMessage.class);
-
+					if(request == null) {
+						shutdown = true;
+						continue;
+					}
 					switch (request.getRequestType()) {
 					/* GET request type is considered as the request for the new proxy server*/
 					case GET:
-						NetworkProxy nextProxy = ProxyRotator.getInstance().getNextProxy();
+						logger.info("Received Proxy request from {}", clientSocket.getInetAddress());
+						NetworkProxy nextProxy = new NetworkProxy(request.getProtocol(),"ip", new Random().nextInt(),"ori");//ProxyRotator.getInstance().getNextProxy();
 						ServerResponseMessage message = new ServerResponseMessage(RequestType.GET, nextProxy);
 						JsonWriter jsonWriter = new JsonWriter( new OutputStreamWriter(clientSocket.getOutputStream()));
 						jsonWriter.jsonValue(new Gson().toJson(message));
@@ -65,10 +69,17 @@ public class ClientConnectionHandler implements Runnable {
 						break;
 					/* HEARTBEAT request type is considered as the ACK to the heartbeat sent by server*/
 					case HEARTBEAT_ACK:
+						logger.info("Received ack from {}", clientSocket.getInetAddress());
 						hearBeatAck = true;
-						hearBeatAckLock.notify();
+						synchronized (hearBeatAckLock) {
+							hearBeatAckLock.notify();
+						}
 						break;
-					/* Exit request type is considered as the signal from client to terminate the socket connection.*/
+					/* If server receives HEARTBEAT message from client, server need to ignore it as client may be testing the connectivity.*/
+					case HEARTBEAT:
+						// Do Nothing.
+						break;
+					/* Exit request type is considered as the signal from client to terminate the socket connection.*/	
 					case EXIT:
 						shutdown = true;
 						break;
@@ -77,8 +88,9 @@ public class ClientConnectionHandler implements Runnable {
 						break;
 					}
 
-				} catch (IOException e) {
+				} catch (Exception e) {
 					logger.warn("Error while reading client {}", e.getMessage());
+					e.printStackTrace();
 					shutdown = true;
 				}
 			}
@@ -103,25 +115,29 @@ public class ClientConnectionHandler implements Runnable {
 
 		@Override
 		public void run() {
-
 			Gson gson = new Gson();
 			String heartBeatmsg = gson.toJson(new ServerResponseMessage(RequestType.HEARTBEAT, null));
 			logger.info("Sending hearbeat to : {}", clientSocket.getLocalAddress());
 			try {
-				while (true) {
+				boolean shut =false;
+				while (!shut ) {
 					OutputStreamWriter outputStreamWriter = new OutputStreamWriter(clientSocket.getOutputStream());
 					outputStreamWriter.write(heartBeatmsg);
 					outputStreamWriter.flush();
-					hearBeatAckLock.wait(15000);
+					synchronized (hearBeatAckLock) {
+						hearBeatAckLock.wait(15000);
+					}
 					if (!hearBeatAck) {
+						shut =true;
 						clientSocket.getChannel().close();
+						break;
 					}
 					Thread.sleep(15000);
 				}
 			} catch (IOException e) {
-				logger.warn("Error ocurred while sending the heartbeat {}", e.getMessage());
+				logger.warn("Error ocurred while sending the heartbeat {}", e);
 			} catch (InterruptedException e) {
-				logger.warn("Heartbeat thread got interupted");
+				logger.warn("Heartbeat thread got interupted", e);
 			}
 
 		}
