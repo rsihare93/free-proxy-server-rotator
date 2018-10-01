@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
+
 import java.util.Random;
 
 import org.apache.logging.log4j.LogManager;
@@ -138,6 +139,7 @@ public class ClientConnectionHandler implements Runnable {
 				logger.warn("Error ocurred while sending the heartbeat {}", e);
 			} catch (InterruptedException e) {
 				logger.warn("Heartbeat thread got interupted", e);
+
 			}
 
 		}
