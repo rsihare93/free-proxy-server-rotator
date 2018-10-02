@@ -96,7 +96,8 @@ public class ClientConnectionHandler implements Runnable {
 				}
 			}
 		} catch (IOException e) {
-			logger.warn("Exception occured while serving client {} ", clientSocket.getInetAddress(), e.getMessage());
+			logger.warn("Exception occured while serving client {} ", clientSocket.getInetAddress(), e);
+			shutdown = true;
 		}
 	}
 
@@ -118,10 +119,11 @@ public class ClientConnectionHandler implements Runnable {
 		public void run() {
 			Gson gson = new Gson();
 			String heartBeatmsg = gson.toJson(new ServerResponseMessage(RequestType.HEARTBEAT, null));
-			logger.info("Sending hearbeat to : {}", clientSocket.getLocalAddress());
 			try {
 				boolean shut =false;
 				while (!shut ) {
+					logger.info("Sending hearbeat to : {}", clientSocket.getLocalAddress());
+					hearBeatAck = false;
 					OutputStreamWriter outputStreamWriter = new OutputStreamWriter(clientSocket.getOutputStream());
 					outputStreamWriter.write(heartBeatmsg);
 					outputStreamWriter.flush();
@@ -129,14 +131,18 @@ public class ClientConnectionHandler implements Runnable {
 						hearBeatAckLock.wait(15000);
 					}
 					if (!hearBeatAck) {
+						logger.warn("Did not receive ack from client. closing the handler thread.");
 						shut =true;
-						clientSocket.getChannel().close();
+						if(clientSocket != null && clientSocket.getChannel() != null) {
+							clientSocket.getChannel().close();
+						}
 						break;
-					}
+					} else {
 					Thread.sleep(15000);
+					}
 				}
 			} catch (IOException e) {
-				logger.warn("Error ocurred while sending the heartbeat {}", e);
+				logger.warn("Error ocurred while sending the heartbeat.", e);
 			} catch (InterruptedException e) {
 				logger.warn("Heartbeat thread got interupted", e);
 

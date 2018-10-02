@@ -3,6 +3,7 @@ package com.edidat.module.ProxyRotator.client;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
 import java.net.UnknownHostException;
@@ -27,8 +28,10 @@ import com.google.gson.stream.JsonWriter;
 public class ProxyFetcherClient {
 
 	private static final Logger logger = LogManager.getLogger(ProxyFetcherClient.class);
-	private static final long waitTimeInMilliSeconds = 300000;
+	private static final long waitTimeInMilliSeconds = 3000;
 	private Socket socket;
+	private OutputStream outputStream;
+	private InputStream inputStream;
 	private String host;
 	private int port;
 	private static ProxyFetcherClient singletonObject;
@@ -57,15 +60,30 @@ public class ProxyFetcherClient {
 		return r;
 	}
 
+	public synchronized Optional<NetworkProxy> getProxyAddress(Protocol protocol) {
+		if (socket == null) {
+			try {
+				initSocket();
+			} catch (ProxyRotatorException e) {
+				logger.error("Error occured while initialising the socket", e);
+				return Optional.empty();
+			}
+		}
+		return sendProxyRequest(protocol);
+	}
+	
 	private void initSocket() throws ProxyRotatorException {
 		int numberOfRetries = 3;
 		while (socket == null) {
+			logger.info("Trying to Init socket.");
 			try {
 				socket = new Socket(host, port);
-
 				if (future != null) {
 					future.cancel(true);
+					future = null;
 				}
+				outputStream = socket.getOutputStream();
+				inputStream = socket.getInputStream();
 
 				future = executorService.submit(new Runnable() {
 					public void run() {
@@ -80,9 +98,9 @@ public class ProxyFetcherClient {
 			} catch (UnknownHostException e) {
 				throw new ProxyRotatorException("Please configure proper host and port details.", e);
 			} catch (IOException e) {
-				logger.error("Error occured while initialiseing the socket. {}", e.getMessage());
+				logger.error("Error occured while initialiseing the socket.", e);
 				numberOfRetries--;
-				if (numberOfRetries != 0) {
+				if (numberOfRetries > 0) {
 					continue;
 				}
 				throw new ProxyRotatorException("Error occured while connecting to server.", e);
@@ -90,6 +108,47 @@ public class ProxyFetcherClient {
 		}
 	}
 
+	@SuppressWarnings("resource")
+	private Optional<NetworkProxy> sendProxyRequest(Protocol protocol) {
+		Optional<NetworkProxy> toReturn = Optional.empty();
+		boolean done = false;
+		int j = 3;
+		try {
+			while (!done && j > 0) {
+				try {
+					JsonWriter jsonWriter = new JsonWriter(new OutputStreamWriter(outputStream));
+					jsonWriter.jsonValue(new Gson().toJson(new ClientRequestMessage(RequestType.GET, protocol),
+							ClientRequestMessage.class));
+					jsonWriter.flush();
+					done = true;
+					synchronized (proxyRequestLock) {
+						proxyRequestLock.wait(waitTimeInMilliSeconds);
+					}
+					return networkProxy != null ? Optional.of(networkProxy) : toReturn;
+				} catch (IOException e) {
+					logger.warn("Error occured while requesting proxy.. retring...", e);
+					try {
+						socket = null;
+						initSocket();
+						j--;
+						continue;
+					} catch (ProxyRotatorException e1) {
+						return toReturn;
+					}
+				} catch (InterruptedException e) {
+					logger.warn("Error occured while requesting proxy", e);
+					return networkProxy != null ? Optional.of(networkProxy) : toReturn;
+				}
+			}
+		} catch (Exception e){
+			logger.warn("Error occured while requesting proxy", e);
+			return networkProxy != null ? Optional.of(networkProxy) : toReturn;
+			
+		}
+		return networkProxy != null ? Optional.of(networkProxy) : toReturn;
+	}
+
+	
 	protected void handleServerResponse(Socket serverSocket) {
 		try {
 			if (serverSocket == null) {
@@ -98,26 +157,25 @@ public class ProxyFetcherClient {
 			logger.info("Reading Server {}", serverSocket.getInetAddress());
 			serverSocket.setKeepAlive(true);
 			serverSocket.setSoTimeout(0);
-			InputStream inputStream = serverSocket.getInputStream();
-			JsonReader jsonReader = new JsonReader(new InputStreamReader(inputStream));
 			Gson gson = new Gson();
 			boolean shutdown = false;
 			while (!shutdown && !Thread.currentThread().isInterrupted()) {
 				try {
 					logger.info("Trying to Read meassage");
-					ServerResponseMessage response = gson.fromJson(jsonReader, ServerResponseMessage.class);
+					ServerResponseMessage response = gson.fromJson(new JsonReader(new InputStreamReader(inputStream)), ServerResponseMessage.class);
 					logger.info("Meassage Reading completed");
 					if(response == null) {
+						logger.info("Recived EOS Response, closing thread.");
 						break;
 					}
-					switch (response.getRequestType()) {
+					 switch (response.getRequestType()) {
 					/* GET request type is considered as the request for the new proxy server */
 					case GET:
 						networkProxy = response.getNetworkProxy();
 						synchronized (proxyRequestLock) {
-							proxyRequestLock.notify();
+							proxyRequestLock.notifyAll();
 						}
-						break;
+						break ;
 						/*
 						 * If client receives HEARTBEAT message from Server, client need to response as
 						 * Ack.
@@ -129,108 +187,47 @@ public class ProxyFetcherClient {
 						jsonWriter.jsonValue(new Gson().toJson(message));
 						jsonWriter.flush();
 						logger.info("Sent Hearbeat Ack");
-						break;
+						break ;
 					default:
-						break;
+						break ;
 					}
-
+					logger.info("Completed reading.");
 				} catch (IOException e) {
-					logger.warn("Error while reading client {}", e.getMessage());
+					logger.warn("Error while reading client", e);
 					shutdown = true;
+				} catch (Exception e) {
+					logger.warn("Error while reading client", e);
 				}
 			}
 		} catch (IOException e) {
-			logger.warn("Exception occured while reading server{} ", serverSocket.getInetAddress(), e.getMessage());
+			logger.warn("Exception occured while reading server{} ", serverSocket.getInetAddress(), e);
 		} finally {
+			logger.warn("Finally closing the socket");
 			try {
+				inputStream.close();
+				outputStream.close();
 				serverSocket.close();
 			} catch (Exception e) {
-
+				logger.error("Error while closing server socket", e);
 			}
 		}
 	}
 
-	public synchronized Optional<NetworkProxy> getProxyAddress(Protocol protocol) {
-		if (socket == null) {
-			try {
-				initSocket();
-			} catch (ProxyRotatorException e) {
-				logger.error("Error occured while initialising the socket {}", e.getMessage());
-				return Optional.empty();
-			}
-		}
-		return sendProxyRequest(protocol);
-	}
-
-	private Optional<NetworkProxy> sendProxyRequest(Protocol protocol) {
-		Optional<NetworkProxy> toReturn = Optional.empty();
-		JsonWriter jsonWriter = null;
-		boolean done = false;
-		int j = 3;
-		try {
-			while (!done && j > 0) {
-				try {
-					jsonWriter = new JsonWriter(new OutputStreamWriter(socket.getOutputStream()));
-					jsonWriter.jsonValue(new Gson().toJson(new ClientRequestMessage(RequestType.GET, protocol),
-							ClientRequestMessage.class));
-					jsonWriter.flush();
-					done = true;
-					synchronized (proxyRequestLock) {
-						proxyRequestLock.wait(waitTimeInMilliSeconds);
-					}
-					return networkProxy != null ? Optional.of(networkProxy) : toReturn;
-				} catch (IOException e) {
-					logger.warn("Error occured while requesting proxy retiring... {}", e.getMessage());
-					try {
-						socket = null;
-						initSocket();
-						j--;
-						continue;
-					} catch (ProxyRotatorException e1) {
-						return toReturn;
-					}
-				} catch (InterruptedException e) {
-					logger.warn("Error occured while requesting proxy {}", e.getMessage());
-					return networkProxy != null ? Optional.of(networkProxy) : toReturn;
-				}
-			}
-		} catch (Exception e){
-			logger.warn("Error occured while requesting proxy {}", e.getMessage());
-			e.printStackTrace();
-			return networkProxy != null ? Optional.of(networkProxy) : toReturn;
-			
-		}finally {
-			if (jsonWriter != null) {
-				try {
-					jsonWriter.close();
-				} catch (IOException e) {
-				}
-			}
-		}
-		return networkProxy != null ? Optional.of(networkProxy) : toReturn;
-	}
-
+	
 	public Boolean isSocketConnected() {
 		if (socket == null) {
 			return false;
 		}
-		JsonWriter jsonWriter = null;
 		try {
-			jsonWriter = new JsonWriter(new OutputStreamWriter(socket.getOutputStream()));
+			@SuppressWarnings("resource")
+			JsonWriter jsonWriter = new JsonWriter(new OutputStreamWriter(outputStream));
 			jsonWriter.jsonValue(new Gson().toJson(new ClientRequestMessage(RequestType.HEARTBEAT, null),
 					ClientRequestMessage.class));
 			jsonWriter.flush();
 			return true;
 		} catch (IOException e) {
 			return false;
-		} finally {
-			if (jsonWriter != null) {
-				try {
-					jsonWriter.close();
-				} catch (IOException e) {
-				}
-			}
-		}
+		} 
 	}
 	
 	public static void main(String[] args) throws InterruptedException {
