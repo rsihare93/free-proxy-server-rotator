@@ -2,8 +2,9 @@ package com.edidat.module.ProxyRotator.server;
 
 import java.io.IOException;
 import java.net.ServerSocket;
-
 import java.net.Socket;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -12,6 +13,8 @@ import org.apache.logging.log4j.Logger;
 import org.jsoup.helper.StringUtil;
 
 import com.edidat.module.ProxyRotator.Constants;
+import com.edidat.module.ProxyRotator.Protocol;
+import com.edidat.module.ProxyRotator.ProxyRotator;
 import com.edidat.module.ProxyRotator.ProxyRotatorException;
 
 /**
@@ -42,7 +45,7 @@ public class ProxyProviderServer {
 	 */
 	public static void start() throws ProxyRotatorException {
 		logger.info("Starting server ...");
-		// ProxyRotator.getInstance().init();
+		ProxyRotator.getInstance().init(new HashSet<Protocol>(Arrays.asList(new Protocol [] {Protocol.HTTPS})));
 		clientRequestServer();
 	}
 

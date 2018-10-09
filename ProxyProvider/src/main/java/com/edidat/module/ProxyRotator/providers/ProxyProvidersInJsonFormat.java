@@ -1,6 +1,7 @@
 package com.edidat.module.ProxyRotator.providers;
 
-import java.util.concurrent.BlockingQueue;
+import java.net.SocketTimeoutException;
+import java.util.Calendar;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -9,58 +10,64 @@ import org.jsoup.Jsoup;
 import com.edidat.module.ProxyRotator.Protocol;
 import com.edidat.module.ProxyRotator.ProxyRotator;
 import com.edidat.module.ProxyRotator.pojo.NetworkProxy;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.jayway.jsonpath.JsonPath;
 
 public class ProxyProvidersInJsonFormat extends ProxyProvider {
 
-	private static final Logger logger = LogManager.getLogger(ProxyProvidersInJsonFormat.class);
+	protected Logger logger = LogManager.getLogger(ProxyProvidersInJsonFormat.class);
 	private static final String ipPortRegex = "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]):[0-9]+$";
 	private String jsonIPKey;
 	private String jsonPORTKey;
 
-	protected ProxyProvidersInJsonFormat(String providerName, String httpsProxyApiURL, String httpProxyApiURL,
-			Integer quotaPerTimeUnit, Integer timeUnitInMinutes, Integer remainingQuota,
-			BlockingQueue<NetworkProxy> proxyQueue, String jsonIPKey, String jsonPORTKey) {
-		super(providerName, httpsProxyApiURL, httpProxyApiURL, quotaPerTimeUnit, timeUnitInMinutes, proxyQueue);
+	public ProxyProvidersInJsonFormat(String providerName, String proxyApiURL, Integer quotaPerTimeUnit,
+			Integer timeUnitInMinutes, String jsonIPKey, String jsonPORTKey, Protocol protocol) {
+		super(providerName, proxyApiURL, quotaPerTimeUnit, timeUnitInMinutes, protocol);
 		this.jsonIPKey = jsonIPKey;
 		this.jsonPORTKey = jsonPORTKey;
 	}
 
 	@Override
 	public void extractAndLoad(Protocol protocol) throws InterruptedException {
+		Thread.currentThread().setName(this.getProviderName() + Calendar.getInstance().getTimeInMillis());
+		while (true) {
+			Integer noOfProxiesToLoadPerMinute = getNOOfProxiesToLoadPerMinute();
+			String proxyServerApi = getProxyApiURL();
+			logger.warn("Proxy API loading : {}", proxyServerApi);
 
-		Integer noOfProxiesToLoadPerMinute = getNOOfProxiesToLoadPerMinute();
-		String proxyServerApi = protocol.equals(Protocol.HTTP) ? getHttpProxyApiURL() : getHttpsProxyApiURL();
-		logger.warn("Proxy API loading : {}", proxyServerApi);
-
-		for (int i = 0; i < noOfProxiesToLoadPerMinute; i++) {
-			String ipPort = "";
-			try {
-				ipPort = Jsoup.connect(proxyServerApi).ignoreContentType(true).get().text();
-				JsonParser parser = new JsonParser();
+			inner: for (int i = 0; i < noOfProxiesToLoadPerMinute; i++) {
+				String response = "";
+				String ipPort = "";
 				try {
-					JsonObject object = parser.parse(ipPort).getAsJsonObject();
-					ipPort = object.get(jsonIPKey).getAsString() + ":" + object.get(jsonPORTKey).getAsString();
+					response = Jsoup.connect(proxyServerApi).timeout(60000).ignoreHttpErrors(true).ignoreContentType(true).get().text();
+					if(response.isEmpty()) {
+						i--;
+						continue;
+					}
+					ipPort = JsonPath.parse(response).read(jsonIPKey).toString() + ":"
+							+ (String) JsonPath.parse(response).read(jsonPORTKey).toString();
+				} catch (SocketTimeoutException e) {
+					logger.error(ipPort, e);
+					i--;
+					continue;
 				} catch (Exception e) {
-					logger.error(e.getMessage());
+					logger.error(ipPort, e);
 				}
-			} catch (Exception e) {
-				logger.error(e.getMessage());
+				logger.warn("{} :: Proxy API response : {}", proxyServerApi, response);
+				
+				if (ipPort.matches(ipPortRegex)) {
+					String[] ipPortPair = ipPort.split(":");
+					ProxyRotator.getInstance().putToQueue(new NetworkProxy(protocol, ipPortPair[0],
+							Integer.parseInt(ipPortPair[1]), this.getProviderName()));
+					this.reduceRemainingQuota(1);
+				} else {
+					logger.warn("{} :: Error while retriving proxy server {}. Sleeping thread for {} minutes",
+							proxyServerApi, response, this.getTimeUnitInMinutes());
+					Thread.sleep(this.getTimeUnitInMinutes() * 60 * 1000);
+					this.resetQuota();
+					break inner;
+				}
+				Thread.sleep(15000);
 			}
-			logger.warn("{} :: Proxy API response : {}", proxyServerApi, ipPort);
-
-			if (ipPort.matches(ipPortRegex)) {
-				String[] ipPortPair = ipPort.split(":");
-				ProxyRotator.getInstance().putToQueue(new NetworkProxy(protocol, ipPortPair[0],
-						Integer.parseInt(ipPortPair[1]), this.getProviderName()));
-				this.reduceRemainingQuota(1);
-			} else {
-				logger.warn("{} :: Error while retriving proxy server {}. Sleeping thread for 2 hours", proxyServerApi,
-						ipPort);
-				Thread.sleep(7200000);
-			}
-			Thread.sleep(2000);
 		}
 	}
 

@@ -6,11 +6,10 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
 
-import java.util.Random;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.edidat.module.ProxyRotator.ProxyRotator;
 import com.edidat.module.ProxyRotator.RequestType;
 import com.edidat.module.ProxyRotator.pojo.ClientRequestMessage;
 import com.edidat.module.ProxyRotator.pojo.NetworkProxy;
@@ -62,7 +61,7 @@ public class ClientConnectionHandler implements Runnable {
 					/* GET request type is considered as the request for the new proxy server*/
 					case GET:
 						logger.info("Received Proxy request from {}", clientSocket.getInetAddress());
-						NetworkProxy nextProxy = new NetworkProxy(request.getProtocol(),"ip", new Random().nextInt(),"ori");//ProxyRotator.getInstance().getNextProxy();
+						NetworkProxy nextProxy = ProxyRotator.getInstance().getNextProxy(request.getProtocol());
 						ServerResponseMessage message = new ServerResponseMessage(RequestType.GET, nextProxy);
 						JsonWriter jsonWriter = new JsonWriter( new OutputStreamWriter(clientSocket.getOutputStream()));
 						jsonWriter.jsonValue(new Gson().toJson(message));

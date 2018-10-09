@@ -1,46 +1,59 @@
 package com.edidat.module.ProxyRotator.providers;
 
-import java.util.concurrent.BlockingQueue;
+import org.apache.logging.log4j.Logger;
 
 import com.edidat.module.ProxyRotator.Protocol;
-import com.edidat.module.ProxyRotator.pojo.NetworkProxy;
 
 
 
-public abstract class ProxyProvider {
+public abstract class ProxyProvider implements Runnable , Cloneable{
 
 	private static final Integer MIN_PROXIES_TO_LOAD = 4;
 	private String providerName;
-	private String httpsProxyApiURL;
-	private String httpProxyApiURL;
+	private String proxyApiURL;
 	private Integer quotaPerTimeUnit;
 	private Integer timeUnitInMinutes;
 	private Integer remainingQuota;
-	private BlockingQueue<NetworkProxy> proxyQueue;
+	private Protocol requiredProtocol;
 	
-	public ProxyProvider(String providerName, String httpsProxyApiURL, String httpProxyApiURL, Integer quotaPerTimeUnit,
-			Integer timeUnitInMinutes, BlockingQueue<NetworkProxy> proxyQueue) {
+	protected Logger logger;
+	
+	public ProxyProvider(String providerName, String proxyApiURL, Integer quotaPerTimeUnit,
+			Integer timeUnitInMinutes, Protocol protocol) {
 		super();
 		this.providerName = providerName;
-		this.httpsProxyApiURL = httpsProxyApiURL;
-		this.httpProxyApiURL = httpProxyApiURL;
+		this.proxyApiURL = proxyApiURL;
 		this.quotaPerTimeUnit = quotaPerTimeUnit;
 		this.timeUnitInMinutes = timeUnitInMinutes;
 		this.remainingQuota = quotaPerTimeUnit;
-		this.proxyQueue = proxyQueue;
+		this.requiredProtocol = protocol;
+	}
+	
+	@Override
+	public void run() {
+		try {
+			extractAndLoad(this.requiredProtocol);
+		} catch (InterruptedException e) {
+			logger.error(e);
+		}
 	}
 
 	public abstract void extractAndLoad(Protocol protocol) throws InterruptedException;
 	
-	public BlockingQueue<NetworkProxy> getProxyQueue() {
-		return proxyQueue;
-	}
-
-	public void setProxyQueue(BlockingQueue<NetworkProxy> proxyQueue) {
-		this.proxyQueue = proxyQueue;
-	}
-
 	
+	
+	public void resetQuota() {
+		this.remainingQuota = quotaPerTimeUnit;
+	}
+	
+	public Protocol getRequiredProtocol() {
+		return requiredProtocol;
+	}
+
+	public void setRequiredProtocol(Protocol requiredProtocol) {
+		this.requiredProtocol = requiredProtocol;
+	}
+
 	public String getProviderName() {
 		return providerName;
 	}
@@ -63,21 +76,12 @@ public abstract class ProxyProvider {
 		return minProxyToLoadAtATime;
 	}
 	
-	public String getHttpProxyApiURL() {
-		return httpProxyApiURL;
+	public String getProxyApiURL() {
+		return proxyApiURL;
 	}
 
-	public void setHttpProxyApiURL(String httpProxyApiURL) {
-		this.httpProxyApiURL = httpProxyApiURL;
-	}
-
-	public String getHttpsProxyApiURL() {
-		return httpsProxyApiURL;
-	}
-
-
-	public void setHttpsProxyApiURL(String httpsProxyApiURL) {
-		this.httpsProxyApiURL = httpsProxyApiURL;
+	public void setProxyApiURL(String proxyApiURL) {
+		this.proxyApiURL = proxyApiURL;
 	}
 
 
@@ -98,6 +102,11 @@ public abstract class ProxyProvider {
 
 	public void setTimeUnitInMinutes(Integer timeUnitInMinutes) {
 		this.timeUnitInMinutes = timeUnitInMinutes;
+	}
+
+	@Override
+	protected Object clone() throws CloneNotSupportedException {
+		return super.clone();
 	}
 	
 }

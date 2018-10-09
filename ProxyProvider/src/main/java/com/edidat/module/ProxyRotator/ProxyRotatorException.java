@@ -27,7 +27,5 @@ public class ProxyRotatorException extends Exception {
 	public ProxyRotatorException(Throwable cause) {
 		super(cause);
 	}
-	
-	
-	
+
 }

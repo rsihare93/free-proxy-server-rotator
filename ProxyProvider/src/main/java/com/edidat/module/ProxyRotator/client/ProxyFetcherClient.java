@@ -14,6 +14,8 @@ import java.util.concurrent.Future;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
 
 import com.edidat.module.ProxyRotator.Protocol;
 import com.edidat.module.ProxyRotator.ProxyRotatorException;
@@ -231,7 +233,11 @@ public class ProxyFetcherClient {
 	}
 	
 	public static void main(String[] args) throws InterruptedException {
+		@SuppressWarnings({ "resource", "unused" })
+		ApplicationContext  context = new ClassPathXmlApplicationContext("config/spring.xml");
 		ProxyFetcherClient instance = ProxyFetcherClient.getInstance("localhost", 5656);
+		System.out.println(System.getProperty("LOG_PATH"));
+		System.out.println(System.getenv("LOG_PATH"));
 		while (true) {
 			System.out.println(instance.getProxyAddress(Protocol.HTTP));
 			System.out.println(instance.getProxyAddress(Protocol.HTTP));
