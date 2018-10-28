@@ -14,8 +14,6 @@ import java.util.concurrent.Future;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.support.ClassPathXmlApplicationContext;
 
 import com.edidat.module.ProxyRotator.Protocol;
 import com.edidat.module.ProxyRotator.ProxyRotatorException;
@@ -43,7 +41,7 @@ public class ProxyFetcherClient {
 	private ExecutorService executorService = Executors.newFixedThreadPool(1);
 	private Future<?> future;
 
-	private ProxyFetcherClient(	String host, int port) {
+	private ProxyFetcherClient(String host, int port) {
 		this.host = host;
 		this.port = port;
 	}
@@ -73,7 +71,7 @@ public class ProxyFetcherClient {
 		}
 		return sendProxyRequest(protocol);
 	}
-	
+
 	private void initSocket() throws ProxyRotatorException {
 		int numberOfRetries = 3;
 		while (socket == null) {
@@ -142,15 +140,14 @@ public class ProxyFetcherClient {
 					return networkProxy != null ? Optional.of(networkProxy) : toReturn;
 				}
 			}
-		} catch (Exception e){
+		} catch (Exception e) {
 			logger.warn("Error occured while requesting proxy", e);
 			return networkProxy != null ? Optional.of(networkProxy) : toReturn;
-			
+
 		}
 		return networkProxy != null ? Optional.of(networkProxy) : toReturn;
 	}
 
-	
 	protected void handleServerResponse(Socket serverSocket) {
 		try {
 			if (serverSocket == null) {
@@ -164,20 +161,21 @@ public class ProxyFetcherClient {
 			while (!shutdown && !Thread.currentThread().isInterrupted()) {
 				try {
 					logger.info("Trying to Read meassage");
-					ServerResponseMessage response = gson.fromJson(new JsonReader(new InputStreamReader(inputStream)), ServerResponseMessage.class);
+					ServerResponseMessage response = gson.fromJson(new JsonReader(new InputStreamReader(inputStream)),
+							ServerResponseMessage.class);
 					logger.info("Meassage Reading completed");
-					if(response == null) {
+					if (response == null) {
 						logger.info("Recived EOS Response, closing thread.");
 						break;
 					}
-					 switch (response.getRequestType()) {
+					switch (response.getRequestType()) {
 					/* GET request type is considered as the request for the new proxy server */
 					case GET:
 						networkProxy = response.getNetworkProxy();
 						synchronized (proxyRequestLock) {
 							proxyRequestLock.notifyAll();
 						}
-						break ;
+						break;
 						/*
 						 * If client receives HEARTBEAT message from Server, client need to response as
 						 * Ack.
@@ -189,9 +187,9 @@ public class ProxyFetcherClient {
 						jsonWriter.jsonValue(new Gson().toJson(message));
 						jsonWriter.flush();
 						logger.info("Sent Hearbeat Ack");
-						break ;
+						break;
 					default:
-						break ;
+						break;
 					}
 					logger.info("Completed reading.");
 				} catch (IOException e) {
@@ -215,7 +213,6 @@ public class ProxyFetcherClient {
 		}
 	}
 
-	
 	public Boolean isSocketConnected() {
 		if (socket == null) {
 			return false;
@@ -229,21 +226,14 @@ public class ProxyFetcherClient {
 			return true;
 		} catch (IOException e) {
 			return false;
-		} 
-	}
-	
-	public static void main(String[] args) throws InterruptedException {
-		@SuppressWarnings({ "resource", "unused" })
-		ApplicationContext  context = new ClassPathXmlApplicationContext("config/spring.xml");
-		ProxyFetcherClient instance = ProxyFetcherClient.getInstance("localhost", 5656);
-		System.out.println(System.getProperty("LOG_PATH"));
-		System.out.println(System.getenv("LOG_PATH"));
-		while (true) {
-			System.out.println(instance.getProxyAddress(Protocol.HTTP));
-			System.out.println(instance.getProxyAddress(Protocol.HTTP));
-			System.out.println(instance.getProxyAddress(Protocol.HTTP));
-			System.out.println(instance.getProxyAddress(Protocol.HTTPS));
-			Thread.sleep(2000);
 		}
 	}
+
+	/*public static void main(String[] args) throws InterruptedException {
+		@SuppressWarnings({ "resource", "unused" })
+		ApplicationContext context = new ClassPathXmlApplicationContext("config/spring.xml");
+		ProxyFetcherClient instance = ProxyFetcherClient.getInstance("localhost", 5656);
+		System.out.println(instance.getProxyAddress(Protocol.HTTP));
+		System.out.println(instance.getProxyAddress(Protocol.HTTPS));
+	}*/
 }
